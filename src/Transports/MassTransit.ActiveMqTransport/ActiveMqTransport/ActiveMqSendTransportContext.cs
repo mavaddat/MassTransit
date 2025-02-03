@@ -5,7 +5,7 @@ namespace MassTransit.ActiveMqTransport
     using System.Threading;
     using System.Threading.Tasks;
     using Apache.NMS;
-    using Apache.NMS.ActiveMQ.Commands;
+    using Apache.NMS.ActiveMQ;
     using Configuration;
     using Internals;
     using Transports;
@@ -79,19 +79,14 @@ namespace MassTransit.ActiveMqTransport
             sendContext.CancellationToken.ThrowIfCancellationRequested();
 
             var destination = context.ReplyDestination ?? await sessionContext.GetDestination(EntityName, _destinationType).ConfigureAwait(false);
-            var producer = await sessionContext.CreateMessageProducer(destination).ConfigureAwait(false);
 
-            var transportMessage = sessionContext.CreateBytesMessage();
+            var transportMessage = sessionContext.CreateBytesMessage(context.Body.GetBytes());
 
-            SetResponseTo(transportMessage, context, sessionContext);
-
-            transportMessage.Content = context.Body.GetBytes();
+            await SetResponseTo(transportMessage, context, sessionContext);
 
             transportMessage.Properties.SetHeaders(context.Headers);
 
             transportMessage.Properties[MessageHeaders.ContentType] = context.ContentType.ToString();
-
-            transportMessage.NMSDeliveryMode = context.Durable ? MsgDeliveryMode.Persistent : MsgDeliveryMode.NonPersistent;
 
             if (context.MessageId.HasValue)
                 transportMessage.NMSMessageId = context.MessageId.ToString();
@@ -99,20 +94,22 @@ namespace MassTransit.ActiveMqTransport
             if (context.CorrelationId.HasValue)
                 transportMessage.NMSCorrelationID = context.CorrelationId.ToString();
 
+            transportMessage.NMSDeliveryMode = context.Durable ? MsgDeliveryMode.Persistent : MsgDeliveryMode.NonPersistent;
+
             if (context.TimeToLive.HasValue)
                 transportMessage.NMSTimeToLive = context.TimeToLive > TimeSpan.Zero ? context.TimeToLive.Value : TimeSpan.FromSeconds(1);
+            //If protocol is AMQP TTL cannot be TimeSpan.Zero = NMSConstants.defaultTimeToLive. A message sent with TTL 0 will be discarded when broker receive it.
+            //Otherwise OpenWire protocol does not set TTL=0 to a message when is 0.
+            else if (sessionContext.Session is Session)
+                transportMessage.NMSTimeToLive = NMSConstants.defaultTimeToLive;
 
-            if (context.Priority.HasValue)
-                transportMessage.NMSPriority = context.Priority.Value;
+            transportMessage.NMSPriority = context.Priority ?? NMSConstants.defaultPriority;
 
-            if (transportMessage is Message message)
-            {
-                if (!string.IsNullOrWhiteSpace(context.GroupId))
-                    message.GroupID = context.GroupId;
+            if (!string.IsNullOrWhiteSpace(context.GroupId))
+                transportMessage.SetGroupId(context.GroupId);
 
-                if (context.GroupSequence.HasValue)
-                    message.GroupSequence = context.GroupSequence.Value;
-            }
+            if (context.GroupSequence.HasValue)
+                transportMessage.SetGroupSequence(context.GroupSequence.Value);
 
             var delay = context.Delay?.TotalMilliseconds;
             if (delay > 0)
@@ -123,12 +120,10 @@ namespace MassTransit.ActiveMqTransport
                     transportMessage.Properties["AMQ_SCHEDULED_DELAY"] = (long)delay.Value;
             }
 
-            var publishTask = Task.Run(() => producer.Send(transportMessage), context.CancellationToken);
-
-            await publishTask.OrCanceled(context.CancellationToken).ConfigureAwait(false);
+            await sessionContext.SendAsync(destination, transportMessage, context.CancellationToken).ConfigureAwait(false);
         }
 
-        static void SetResponseTo(IMessage transportMessage, SendContext context, SessionContext sessionContext)
+        static async Task SetResponseTo(IMessage transportMessage, SendContext context, SessionContext sessionContext)
         {
             if (context.ResponseAddress == null)
                 return;
@@ -137,8 +132,8 @@ namespace MassTransit.ActiveMqTransport
 
             transportMessage.NMSReplyTo = sessionContext.GetTemporaryDestination(endpointName)
                 ?? (context.ResponseAddress.TryGetValueFromQueryString("temporary", out _)
-                    ? (IDestination)new ActiveMQTempQueue(endpointName)
-                    : new ActiveMQQueue(endpointName));
+                    ? await sessionContext.GetDestination(endpointName, DestinationType.TemporaryQueue)
+                    : await sessionContext.GetDestination(endpointName, DestinationType.Queue));
         }
     }
 }

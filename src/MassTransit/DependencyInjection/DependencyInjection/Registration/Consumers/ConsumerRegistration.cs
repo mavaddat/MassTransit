@@ -18,12 +18,14 @@ namespace MassTransit.DependencyInjection.Registration
         IConsumerRegistration
         where TConsumer : class, IConsumer
     {
-        readonly List<Action<IConsumerConfigurator<TConsumer>>> _configureActions;
+        readonly List<Action<IRegistrationContext, IConsumerConfigurator<TConsumer>>> _configureActions;
+        readonly IContainerSelector _selector;
         IConsumerDefinition<TConsumer> _definition;
 
-        public ConsumerRegistration()
+        public ConsumerRegistration(IContainerSelector selector)
         {
-            _configureActions = new List<Action<IConsumerConfigurator<TConsumer>>>();
+            _selector = selector;
+            _configureActions = new List<Action<IRegistrationContext, IConsumerConfigurator<TConsumer>>>();
             IncludeInConfigureEndpoints = !Type.HasAttribute<ExcludeFromConfigureEndpointsAttribute>();
         }
 
@@ -31,9 +33,9 @@ namespace MassTransit.DependencyInjection.Registration
 
         public bool IncludeInConfigureEndpoints { get; set; }
 
-        void IConsumerRegistration.AddConfigureAction<T>(Action<IConsumerConfigurator<T>> configure)
+        void IConsumerRegistration.AddConfigureAction<T>(Action<IRegistrationContext, IConsumerConfigurator<T>> configure)
         {
-            if (configure is Action<IConsumerConfigurator<TConsumer>> action)
+            if (configure is Action<IRegistrationContext, IConsumerConfigurator<TConsumer>> action)
                 _configureActions.Add(action);
         }
 
@@ -51,8 +53,8 @@ namespace MassTransit.DependencyInjection.Registration
             GetConsumerDefinition(context)
                 .Configure(configurator, consumerConfigurator, context);
 
-            foreach (Action<IConsumerConfigurator<TConsumer>> action in _configureActions)
-                action(consumerConfigurator);
+            foreach (Action<IRegistrationContext, IConsumerConfigurator<TConsumer>> action in _configureActions)
+                action(context, consumerConfigurator);
 
             var endpointName = configurator.InputAddress.GetEndpointName();
 
@@ -62,8 +64,6 @@ namespace MassTransit.DependencyInjection.Registration
             LogContext.Info?.Log("Configured endpoint {Endpoint}, Consumer: {ConsumerType}", endpointName, TypeCache<TConsumer>.ShortName);
 
             configurator.AddEndpointSpecification(consumerConfigurator);
-
-            IncludeInConfigureEndpoints = false;
         }
 
         IConsumerDefinition IConsumerRegistration.GetDefinition(IRegistrationContext context)
@@ -81,9 +81,9 @@ namespace MassTransit.DependencyInjection.Registration
             if (_definition != null)
                 return _definition;
 
-            _definition = provider.GetService<IConsumerDefinition<TConsumer>>() ?? new DefaultConsumerDefinition<TConsumer>();
+            _definition = _selector.GetDefinition<IConsumerDefinition<TConsumer>>(provider) ?? new DefaultConsumerDefinition<TConsumer>();
 
-            var endpointDefinition = provider.GetService<IEndpointDefinition<TConsumer>>();
+            IEndpointDefinition<TConsumer> endpointDefinition = _selector.GetEndpointDefinition<TConsumer>(provider);
             if (endpointDefinition != null)
                 _definition.EndpointDefinition = endpointDefinition;
 

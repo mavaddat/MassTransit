@@ -155,7 +155,7 @@ namespace MassTransit.Context
                 }
             }
 
-            return Array.Empty<string>();
+            return [];
         }
 
         protected static TimeSpan? ReadTimeSpan(IReadOnlyDictionary<string, object> properties, string key, TimeSpan? defaultValue = null)
@@ -198,6 +198,13 @@ namespace MassTransit.Context
             var longValue = ReadLong(properties, key);
 
             return longValue.HasValue ? (int)longValue.Value : defaultValue;
+        }
+
+        protected static short? ReadShort(IReadOnlyDictionary<string, object> properties, string key, short? defaultValue = null)
+        {
+            var longValue = ReadLong(properties, key);
+
+            return longValue.HasValue ? (short)longValue.Value : defaultValue;
         }
 
         protected static long? ReadLong(IReadOnlyDictionary<string, object> properties, string key, long? defaultValue = null)

@@ -2,7 +2,6 @@
 {
     using System;
     using Confluent.Kafka;
-    using Serialization;
     using Transports;
 
 
@@ -26,7 +25,8 @@
             InputAddress = context.GetInputAddress(_result.Topic);
 
             _key = new Lazy<TKey>(() => _context.KeyDeserializer.DeserializeKey(result));
-            _headerProvider = new Lazy<IHeaderProvider>(() => _context.HeadersDeserializer.Deserialize(_result.Message.Headers));
+            _headerProvider = new Lazy<IHeaderProvider>(() =>
+                new KafkaHeaderProvider(_result.Message, _context.HeadersDeserializer.Deserialize(_result.Message.Headers)));
 
             var messageContext = new KafkaMessageContext(_result, this);
 
@@ -50,6 +50,7 @@
         public int Partition => _result.Partition;
 
         public long Offset => _result.Offset;
+        public bool IsPartitionEof => _result.IsPartitionEOF;
 
         public DateTime CheckpointUtcDateTime => _result.Message.Timestamp.UtcDateTime;
     }

@@ -1,13 +1,12 @@
 namespace MassTransit
 {
     using Configuration;
-    using Serialization;
 
 
     public static class RawJsonSerializerConfigurationExtensions
     {
         /// <summary>
-        /// Serialize messages using the raw JSON message serializer
+        /// Serialize and deserialize messages using the raw JSON message serializer
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="options">Options for the raw serializer behavior</param>
@@ -36,7 +35,7 @@ namespace MassTransit
         }
 
         /// <summary>
-        /// Serialize messages using the raw JSON message serializer
+        /// Deserialize messages using the raw JSON message serializer
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="options">Options for the raw serializer behavior</param>
@@ -50,7 +49,7 @@ namespace MassTransit
         }
 
         /// <summary>
-        /// Serialize messages using the raw JSON message serializer
+        /// Serialize and deserialize messages using the raw JSON message serializer
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="options">Options for the raw serializer behavior</param>
@@ -65,7 +64,7 @@ namespace MassTransit
         }
 
         /// <summary>
-        /// Serialize messages using the raw JSON message serializer
+        /// Deserialize messages using the raw JSON message serializer
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="options">Options for the raw serializer behavior</param>

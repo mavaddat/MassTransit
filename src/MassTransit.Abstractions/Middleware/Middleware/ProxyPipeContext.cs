@@ -2,7 +2,6 @@ namespace MassTransit.Middleware
 {
     using System;
     using System.Diagnostics.CodeAnalysis;
-    using System.Reflection;
     using System.Threading;
 
 
@@ -33,7 +32,7 @@ namespace MassTransit.Middleware
         /// <returns></returns>
         public virtual bool HasPayloadType(Type payloadType)
         {
-            return payloadType.GetTypeInfo().IsInstanceOfType(this) || _parentContext.HasPayloadType(payloadType);
+            return payloadType.IsInstanceOfType(this) || _parentContext.HasPayloadType(payloadType);
         }
 
         /// <summary>

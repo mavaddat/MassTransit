@@ -109,12 +109,31 @@
 
         async Task OnMessage(ProcessMessageEventArgs messageReceiver, ServiceBusReceivedMessage message, CancellationToken cancellationToken)
         {
+            if (IsStopping)
+                return;
+
             MessageLockContext lockContext = new ServiceBusMessageLockContext(messageReceiver, message);
             var context = new ServiceBusReceiveContext(message, _context, lockContext, _clientContext);
 
+            CancellationTokenSource cancellationTokenSource = null;
+            CancellationTokenRegistration timeoutRegistration = default;
             CancellationTokenRegistration registration = default;
             if (cancellationToken.CanBeCanceled)
-                registration = cancellationToken.Register(context.Cancel);
+            {
+                void Callback()
+                {
+                    if (_context.ConsumerStopTimeout.HasValue)
+                    {
+                        cancellationTokenSource = new CancellationTokenSource(_context.ConsumerStopTimeout.Value);
+                        timeoutRegistration = cancellationTokenSource.Token.Register(context.Cancel);
+                    }
+                    else
+                        context.Cancel();
+                }
+
+                registration = cancellationToken.Register(Callback);
+            }
+
 
             try
             {
@@ -126,7 +145,11 @@
             }
             finally
             {
+                timeoutRegistration.Dispose();
                 registration.Dispose();
+
+                cancellationTokenSource?.Dispose();
+
                 context.Dispose();
             }
         }

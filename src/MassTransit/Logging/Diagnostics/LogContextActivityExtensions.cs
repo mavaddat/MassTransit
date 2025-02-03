@@ -7,6 +7,7 @@ namespace MassTransit.Logging
     using System.Collections.Generic;
     using System.Diagnostics;
     using Courier.Contracts;
+    using Metadata;
     using Middleware;
     using Transports;
 
@@ -17,7 +18,11 @@ namespace MassTransit.Logging
             params (string Key, object? Value)[] tags)
             where T : class
         {
-            var activity = Cached.Source.Value.CreateActivity(transportContext.ActivityName, ActivityKind.Producer);
+            var parentActivityContext = System.Diagnostics.Activity.Current == null
+                ? GetParentActivityContext(context.Headers)
+                : default;
+
+            var activity = Cached.Source.Value.CreateActivity(transportContext.ActivityName, ActivityKind.Producer, parentActivityContext);
             if (activity == null)
                 return null;
 
@@ -31,7 +36,11 @@ namespace MassTransit.Logging
         public static StartedActivity? StartOutboxSendActivity<T>(this ILogContext logContext, SendContext<T> context)
             where T : class
         {
-            var activity = Cached.Source.Value.CreateActivity("outbox send", ActivityKind.Producer);
+            var parentActivityContext = System.Diagnostics.Activity.Current == null
+                ? GetParentActivityContext(context.Headers)
+                : default;
+
+            var activity = Cached.Source.Value.CreateActivity("outbox send", ActivityKind.Producer, parentActivityContext);
             if (activity == null)
                 return null;
 
@@ -56,9 +65,20 @@ namespace MassTransit.Logging
         public static StartedActivity? StartReceiveActivity(this ILogContext logContext, string name, string inputAddress, string endpointName,
             ReceiveContext context)
         {
-            var parentActivityContext = GetParentActivityContext(context.TransportHeaders);
+            var parentActivityContext = GetParentActivityContext(context.TransportHeaders, true);
 
-            var activity = Cached.Source.Value.CreateActivity(name, ActivityKind.Consumer, parentActivityContext);
+            var activity = context.TransportHeaders.TryGetHeader(DiagnosticHeaders.ActivityPropagation, out var linkTypeValue) switch
+            {
+                true => linkTypeValue switch
+                {
+                    "Link" => Cached.Source.Value.CreateActivity(name, ActivityKind.Consumer, (ActivityContext)default,
+                        links: [new ActivityLink(parentActivityContext)]),
+                    "New" => Cached.Source.Value.CreateActivity(name, ActivityKind.Consumer, (ActivityContext)default),
+                    _ => Cached.Source.Value.CreateActivity(name, ActivityKind.Consumer, parentActivityContext)
+                },
+                false => Cached.Source.Value.CreateActivity(name, ActivityKind.Consumer, parentActivityContext)
+            };
+
             if (activity == null)
                 return null;
 
@@ -83,7 +103,7 @@ namespace MassTransit.Logging
         public static StartedActivity? StartConsumerActivity<TConsumer, T>(this ILogContext logContext, ConsumeContext<T> context)
             where T : class
         {
-            return StartActivity(activity =>
+            return StartActivity(context, activity =>
             {
                 activity.SetTag(DiagnosticHeaders.ConsumerType, TypeCache<TConsumer>.ShortName);
                 activity.SetTag(DiagnosticHeaders.PeerAddress, MessageTypeCache<T>.DiagnosticAddress);
@@ -93,7 +113,7 @@ namespace MassTransit.Logging
         public static StartedActivity? StartHandlerActivity<T>(this ILogContext logContext, ConsumeContext<T> context)
             where T : class
         {
-            return StartActivity(activity =>
+            return StartActivity(context, activity =>
             {
                 activity.SetTag(DiagnosticHeaders.ConsumerType, "Handler");
                 activity.SetTag(DiagnosticHeaders.PeerAddress, MessageTypeCache<T>.DiagnosticAddress);
@@ -104,7 +124,7 @@ namespace MassTransit.Logging
             where TSaga : class, ISaga
             where T : class
         {
-            return StartActivity(activity =>
+            return StartActivity(context, activity =>
             {
                 activity.SetTag(DiagnosticHeaders.SagaId, context.Saga.CorrelationId.ToString("D"));
                 activity.SetTag(DiagnosticHeaders.ConsumerType, TypeCache<TSaga>.ShortName);
@@ -113,10 +133,10 @@ namespace MassTransit.Logging
         }
 
         public static StartedActivity? StartSagaStateMachineActivity<TSaga, T>(this ILogContext logContext, BehaviorContext<TSaga, T> context)
-            where TSaga : class, ISaga
+            where TSaga : class, SagaStateMachineInstance
             where T : class
         {
-            return StartActivity(activity =>
+            return StartActivity(context, activity =>
             {
                 activity.SetTag(DiagnosticHeaders.SagaId, context.Saga.CorrelationId.ToString("D"));
                 activity.SetTag(DiagnosticHeaders.ConsumerType, context.StateMachine.Name);
@@ -128,7 +148,7 @@ namespace MassTransit.Logging
             where TActivity : IExecuteActivity<TArguments>
             where TArguments : class
         {
-            return StartActivity(activity =>
+            return StartActivity(context, activity =>
             {
                 activity.SetTag(DiagnosticHeaders.TrackingNumber, context.Message.TrackingNumber.ToString("D"));
                 activity.SetTag(DiagnosticHeaders.ConsumerType, TypeCache<TActivity>.ShortName);
@@ -140,7 +160,7 @@ namespace MassTransit.Logging
             where TActivity : ICompensateActivity<TLog>
             where TLog : class
         {
-            return StartActivity(activity =>
+            return StartActivity(context, activity =>
             {
                 activity.SetTag(DiagnosticHeaders.TrackingNumber, context.Message.TrackingNumber.ToString("D"));
                 activity.SetTag(DiagnosticHeaders.ConsumerType, TypeCache<TActivity>.ShortName);
@@ -219,15 +239,22 @@ namespace MassTransit.Logging
             return new StartedActivity(activity);
         }
 
-        static ActivityContext GetParentActivityContext(Headers headers)
+        static ActivityContext GetParentActivityContext(Headers headers, bool isRemote = false)
         {
-            return headers.TryGetHeader(DiagnosticHeaders.ActivityId, out var headerValue) && headerValue is string activityId
-                && ActivityContext.TryParse(activityId, null, out var activityContext)
-                    ? activityContext
-                    : default;
+            if (headers.TryGetHeader(DiagnosticHeaders.ActivityId, out var headerValue)
+                && headerValue is string activityId
+                && ActivityContext.TryParse(activityId, null, out var activityContext))
+            {
+                if (isRemote && System.Diagnostics.Activity.Current == null)
+                    return new ActivityContext(activityContext.TraceId, activityContext.SpanId, activityContext.TraceFlags, activityContext.TraceState, true);
+
+                return activityContext;
+            }
+
+            return default;
         }
 
-        static StartedActivity? StartActivity(Action<System.Diagnostics.Activity> started)
+        static StartedActivity? StartActivity(ConsumeContext context, Action<System.Diagnostics.Activity> started)
         {
             var currentActivity = System.Diagnostics.Activity.Current;
             if (currentActivity == null)
@@ -250,7 +277,26 @@ namespace MassTransit.Logging
             activity.SetTag(DiagnosticHeaders.Messaging.Operation, "process");
 
             if (activity.IsAllDataRequested)
+            {
+                if (context.MessageId.HasValue)
+                    activity.SetTag(DiagnosticHeaders.MessageId, context.MessageId.Value.ToString("D"));
+                if (context.ConversationId.HasValue)
+                    activity.SetTag(DiagnosticHeaders.Messaging.ConversationId, context.ConversationId.Value.ToString("D"));
+                if (context.CorrelationId.HasValue)
+                    activity.SetTag(DiagnosticHeaders.CorrelationId, context.CorrelationId.Value.ToString("D"));
+                if (context.RequestId.HasValue)
+                    activity.SetTag(DiagnosticHeaders.RequestId, context.RequestId.Value.ToString("D"));
+                if (context.InitiatorId.HasValue)
+                    activity.SetTag(DiagnosticHeaders.InitiatorId, context.InitiatorId.Value.ToString("D"));
+                if (context.SourceAddress != null)
+                    activity.SetTag(DiagnosticHeaders.SourceAddress, context.SourceAddress.ToString());
+                if (context.DestinationAddress != null)
+                    activity.SetTag(DiagnosticHeaders.DestinationAddress, context.DestinationAddress.ToString());
+
+                activity.SetTag(DiagnosticHeaders.MessageTypes, string.Join(",", context.SupportedMessageTypes));
+
                 started(activity);
+            }
 
             activity.Start();
 
@@ -260,7 +306,9 @@ namespace MassTransit.Logging
 
         static class Cached
         {
-            internal static readonly Lazy<ActivitySource> Source = new Lazy<ActivitySource>(() => new ActivitySource(DiagnosticHeaders.DefaultListenerName));
+            internal static readonly Lazy<ActivitySource> Source = new Lazy<ActivitySource>(() =>
+                new ActivitySource(DiagnosticHeaders.DefaultListenerName, HostMetadataCache.Host.MassTransitVersion));
+
             internal static readonly ConcurrentDictionary<string, string> OperationNames = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         }
     }

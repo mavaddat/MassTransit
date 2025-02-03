@@ -74,6 +74,37 @@ namespace MassTransit.Configuration
             return register.Register(collection, registrar);
         }
 
+        public static IActivityRegistration RegisterActivity(this IServiceCollection collection, IContainerRegistrar registrar, Type activityType,
+            Type activityDefinitionType = null)
+        {
+            if (!activityType.ClosesType(typeof(IActivity<,>), out Type[] argumentTypes))
+            {
+                throw new ArgumentException($" activities must implement IActivity<TArguments, TLog>: {TypeCache.GetShortName(activityType)}",
+                    nameof(activityType));
+            }
+
+            if (activityDefinitionType != null)
+            {
+                if (!activityDefinitionType.ClosesType(typeof(IActivityDefinition<,,>), out Type[] types) || types[0] != activityType)
+                {
+                    throw new ArgumentException(
+                        $"{TypeCache.GetShortName(activityDefinitionType)} is not an activity definition of {TypeCache.GetShortName(activityType)}",
+                        nameof(activityDefinitionType));
+                }
+
+                var activityRegistrar = (IActivityRegistrar)Activator.CreateInstance(typeof(ActivityDefinitionRegistrar<,,,>)
+                    .MakeGenericType(activityType, argumentTypes[0], argumentTypes[1], activityDefinitionType));
+
+                return activityRegistrar.Register(collection, registrar);
+            }
+
+
+            var register = (IActivityRegistrar)Activator.CreateInstance(typeof(ActivityRegistrar<,,>)
+                .MakeGenericType(activityType, argumentTypes[0], argumentTypes[1]));
+
+            return register.Register(collection, registrar);
+        }
+
 
         interface IActivityRegistrar
         {
@@ -91,7 +122,8 @@ namespace MassTransit.Configuration
             {
                 collection.TryAddScoped<TActivity>();
 
-                return registrar.GetOrAdd<IActivityRegistration>(typeof(TActivity), _ => new ActivityRegistration<TActivity, TArguments, TLog>());
+                return registrar.GetOrAddRegistration<IActivityRegistration>(typeof(TActivity),
+                    _ => new ActivityRegistration<TActivity, TArguments, TLog>(registrar));
             }
         }
 
@@ -107,8 +139,7 @@ namespace MassTransit.Configuration
             {
                 var registration = base.Register(collection, registrar);
 
-                collection.TryAddSingleton<TDefinition>();
-                collection.TryAddSingleton<IActivityDefinition<TActivity, TArguments, TLog>>(provider => provider.GetRequiredService<TDefinition>());
+                registrar.AddDefinition<IActivityDefinition<TActivity, TArguments, TLog>, TDefinition>();
 
                 return registration;
             }

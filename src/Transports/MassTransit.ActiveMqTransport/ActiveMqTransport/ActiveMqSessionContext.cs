@@ -4,7 +4,9 @@
     using System.Threading;
     using System.Threading.Tasks;
     using Apache.NMS;
+    using Apache.NMS.AMQP;
     using Apache.NMS.Util;
+    using Internals;
     using MassTransit.Middleware;
     using Topology;
     using Transports;
@@ -16,7 +18,7 @@
         SessionContext,
         IAsyncDisposable
     {
-        readonly ChannelExecutor _executor;
+        readonly TaskExecutor _executor;
         readonly MessageProducerCache _messageProducerCache;
         readonly ISession _session;
 
@@ -27,7 +29,7 @@
             _session = session;
             CancellationToken = cancellationToken;
 
-            _executor = new ChannelExecutor(1);
+            _executor = new TaskExecutor();
 
             _messageProducerCache = new MessageProducerCache();
         }
@@ -40,7 +42,7 @@
                 {
                     await _messageProducerCache.Stop(CancellationToken.None).ConfigureAwait(false);
 
-                    _session.Close();
+                    await _session.CloseAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -63,11 +65,13 @@
         {
             return _executor.Run(() =>
             {
+                var topicName = topic.EntityName.Split('?')[0];
+
                 if (!topic.Durable && topic.AutoDelete
                     && topic.EntityName.StartsWith(ConnectionContext.Topology.PublishTopology.VirtualTopicPrefix, StringComparison.InvariantCulture))
-                    return ConnectionContext.GetTemporaryTopic(_session, topic.EntityName);
+                    return ConnectionContext.GetTemporaryTopic(_session, topicName);
 
-                return SessionUtil.GetTopic(_session, topic.EntityName);
+                return SessionUtil.GetTopic(_session, topicName);
             }, CancellationToken);
         }
 
@@ -91,19 +95,47 @@
             return _executor.Run(() => SessionUtil.GetDestination(_session, destinationName, destinationType), CancellationToken);
         }
 
-        public Task<IMessageProducer> CreateMessageProducer(IDestination destination)
+        public Task<IMessageConsumer> CreateMessageConsumer(IDestination destination, string selector, bool noLocal, string consumerName = null,
+            bool shared = false)
         {
-            return _messageProducerCache.GetMessageProducer(destination, x => _executor.Run(() => _session.CreateProducer(x), CancellationToken));
+            return _executor.Run(() =>
+            {
+                if (destination.IsTopic && !string.IsNullOrEmpty(consumerName) && shared)
+                {
+                    if (_session is not NmsSession)
+                        throw new NotSupportedException("Shared durable consumers are supported only on ActiveMQ Artemis broker and with AMQP communication.");
+                    return _session.CreateSharedDurableConsumerAsync((ITopic)destination, consumerName, selector);
+                }
+
+                if (destination.IsTopic && !string.IsNullOrEmpty(consumerName) && !shared)
+                    return _session.CreateDurableConsumerAsync((ITopic)destination, consumerName, selector);
+
+                return _session.CreateConsumerAsync(destination, selector, noLocal);
+            }, CancellationToken);
         }
 
-        public Task<IMessageConsumer> CreateMessageConsumer(IDestination destination, string selector, bool noLocal)
+        public async Task SendAsync(IDestination destination, IMessage message, CancellationToken cancellationToken)
         {
-            return _executor.Run(() => _session.CreateConsumer(destination, selector, noLocal), CancellationToken);
+            var producer = await _messageProducerCache.GetMessageProducer(destination,
+                x => _executor.Run(() => _session.CreateProducerAsync(x), cancellationToken)).ConfigureAwait(false);
+
+            await _executor.Run(() => producer.SendAsync(message, message.NMSDeliveryMode, message.NMSPriority, message.NMSTimeToLive)
+                .OrCanceled(cancellationToken), cancellationToken).ConfigureAwait(false);
         }
 
-        public IBytesMessage CreateBytesMessage()
+        public IBytesMessage CreateBytesMessage(byte[] content)
         {
-            return _session.CreateBytesMessage();
+            return _session.CreateBytesMessage(content);
+        }
+
+        public ITextMessage CreateTextMessage(string content)
+        {
+            return _session.CreateTextMessage(content);
+        }
+
+        public IMessage CreateMessage()
+        {
+            return _session.CreateMessage();
         }
 
         public Task DeleteTopic(string topicName)

@@ -150,15 +150,6 @@
 
                 transport = new ActiveMqMessageLatencyTransport(activeMqOptionSet, settings);
             }
-            else if (optionSet.Transport == ProgramOptionSet.TransportOptions.Grpc)
-            {
-                var grpcOptionSet = new GrpcOptionSet();
-                grpcOptionSet.Parse(_remaining);
-
-                grpcOptionSet.ShowOptions();
-
-                transport = new GrpcMessageLatencyTransport(grpcOptionSet, settings);
-            }
             else if (optionSet.Transport == ProgramOptionSet.TransportOptions.Kafka)
             {
                 var kafkaOptionSet = new KafkaOptionSet();
@@ -167,6 +158,15 @@
                 kafkaOptionSet.ShowOptions();
 
                 transport = new KafkaMessageLatencyTransport(kafkaOptionSet, settings);
+            }
+            else if (optionSet.Transport == ProgramOptionSet.TransportOptions.Sql)
+            {
+                var options = new SqlOptionSet();
+                options.Parse(_remaining);
+
+                options.ShowOptions();
+
+                transport = new SqlMessageLatencyTransport(options, settings);
             }
             else if (optionSet.Transport == ProgramOptionSet.TransportOptions.Mediator)
                 transport = new MediatorMessageLatencyTransport(settings);

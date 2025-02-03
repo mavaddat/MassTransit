@@ -5,10 +5,16 @@ namespace MassTransit.ActiveMqTransport.Tests
     using NUnit.Framework;
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class InvalidMessage_Specs :
         ActiveMqTestFixture
     {
+        public InvalidMessage_Specs(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_fault()
         {
@@ -43,9 +49,9 @@ namespace MassTransit.ActiveMqTransport.Tests
 
                 message.NMSCorrelationID = "AB76E632-8550-49B9-A119-BBEB84D53355";
 
-                producer.Send(message);
+                await producer.SendAsync(message);
 
-                producer.Close();
+                await producer.CloseAsync();
                 session.Close();
             }
             finally

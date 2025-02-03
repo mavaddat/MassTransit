@@ -7,6 +7,7 @@
     using System.Linq;
     using System.Reflection;
     using System.Reflection.Emit;
+    using System.Runtime.CompilerServices;
 
 
     public class DynamicImplementationBuilder :
@@ -37,7 +38,7 @@
 
         Type CreateImplementation(Type interfaceType)
         {
-            if (!interfaceType.GetTypeInfo().IsInterface)
+            if (!interfaceType.IsInterface)
                 throw new ArgumentException("Proxies can only be created for interfaces: " + interfaceType.Name, nameof(interfaceType));
 
             return GetModuleBuilderForType(interfaceType, moduleBuilder => CreateTypeFromInterface(moduleBuilder, interfaceType));
@@ -52,8 +53,10 @@
             try
             {
                 var typeBuilder = builder.DefineType(typeName,
-                    TypeAttributes.Serializable | TypeAttributes.Class |
-                    TypeAttributes.Public | TypeAttributes.Sealed,
+                    #pragma warning disable SYSLIB0050 // Formatter-based serialization is obsolete and should not be used.
+                    TypeAttributes.Serializable |
+                    #pragma warning restore SYSLIB0050
+                    TypeAttributes.Class | TypeAttributes.Public | TypeAttributes.Sealed,
                     typeof(object), new[] { interfaceType });
 
                 typeBuilder.DefineDefaultConstructor(MethodAttributes.Public);
@@ -106,8 +109,13 @@
         {
             var setMethodBuilder = typeBuilder.DefineMethod("set_" + propertyInfo.Name,
                 PropertyAccessMethodAttributes,
+                CallingConventions.HasThis,
+                typeof(void),
+                ReturnTypeCustomModifiersForProperty(propertyInfo),
                 null,
-                new[] { propertyInfo.PropertyType });
+                new[] { propertyInfo.PropertyType },
+                null,
+                null);
 
             var il = setMethodBuilder.GetILGenerator();
             il.Emit(OpCodes.Ldarg_0);
@@ -175,6 +183,18 @@
             });
 
             return callback(builder);
+        }
+
+        static Type[] ReturnTypeCustomModifiersForProperty(PropertyInfo propertyInfo)
+        {
+            Type[] returnTypeCustomModifiers = null;
+
+            #if NET5_0_OR_GREATER
+                var hasInitSetter = propertyInfo.SetMethod?.ReturnParameter?.GetRequiredCustomModifiers()?.Contains(typeof(IsExternalInit)) ?? false;
+                returnTypeCustomModifiers = hasInitSetter ? new[] { typeof(IsExternalInit) } : null;
+            #endif
+
+            return returnTypeCustomModifiers;
         }
     }
 }

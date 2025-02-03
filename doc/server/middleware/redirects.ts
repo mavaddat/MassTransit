@@ -209,8 +209,11 @@ const mapping: { [key: string]: string } = {
     '/getting-started/index.html': '/documentation/concepts/messages',
     '/getting-started/live-coding.html': '/documentation/concepts/messages',
     '/discord.html': '/support/support-channels',
+    '/obsolete': '/documentation/configuration/obsolete',
 
-    '/documentation/configuration/integrations/serialization': '/documentation/configuration/serialization'
+    '/documentation/configuration/integrations/serialization': '/documentation/configuration/serialization',
+    '/documentation/patterns/routing-slip': '/documentation/concepts/routing-slips',
+    '/documentation/patterns/routing-slip/configuration': '/documentation/concepts/routing-slips'
 }
 
 // flip the map, so we ignore good routes

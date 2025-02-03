@@ -39,12 +39,12 @@ namespace MassTransit.Tests.Saga
         {
             base.ConfigureInMemoryBus(configurator);
 
-            configurator.UseRetry(x => x.None());
+            configurator.UseMessageRetry(x => x.None());
         }
 
         protected override void ConfigureInMemoryReceiveEndpoint(IInMemoryReceiveEndpointConfigurator configurator)
         {
-            configurator.UseRetry(x => x.Immediate(2));
+            configurator.UseMessageRetry(x => x.Immediate(2));
             configurator.Saga(_repository);
         }
 
@@ -192,7 +192,7 @@ namespace MassTransit.Tests.Saga
             }
             catch (SagaException sex)
             {
-                Assert.AreEqual(sex.MessageType, typeof(InitiateSimpleSaga));
+                Assert.That(sex.MessageType, Is.EqualTo(typeof(InitiateSimpleSaga)));
             }
         }
 

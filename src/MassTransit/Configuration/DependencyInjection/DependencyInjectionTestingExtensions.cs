@@ -47,10 +47,7 @@ namespace MassTransit
         public static IServiceCollection AddMassTransitTestHarness(this IServiceCollection services, TextWriter textWriter,
             Action<IBusRegistrationConfigurator>? configure = null)
         {
-            services.AddOptions<TextWriterLoggerOptions>();
-            services.TryAddSingleton<ILoggerFactory>(provider =>
-                new TextWriterLoggerFactory(textWriter, provider.GetRequiredService<IOptions<TextWriterLoggerOptions>>()));
-            services.TryAddSingleton(typeof(ILogger<>), typeof(Logger<>));
+            AddMassTransitTextWriterLogger(services, textWriter);
 
             services.AddOptions<TestHarnessOptions>();
             services.AddBusObserver<ContainerTestHarnessBusObserver>();
@@ -100,6 +97,21 @@ namespace MassTransit
                     });
                 }
             });
+        }
+
+        /// <summary>
+        /// Internally used by AddMassTransitTestHarness to add a console-based <see cref="ILogger"/> for unit testing
+        /// </summary>
+        /// <param name="services"></param>
+        /// <param name="textWriter"></param>
+        public static IServiceCollection AddMassTransitTextWriterLogger(this IServiceCollection services, TextWriter? textWriter = null)
+        {
+            services.AddOptions<TextWriterLoggerOptions>();
+            services.TryAddSingleton<ILoggerFactory>(provider =>
+                new TextWriterLoggerFactory(textWriter ?? Console.Out, provider.GetRequiredService<IOptions<TextWriterLoggerOptions>>()));
+            services.TryAddSingleton(typeof(ILogger<>), typeof(Logger<>));
+
+            return services;
         }
 
         /// <summary>
@@ -199,8 +211,7 @@ namespace MassTransit
         /// <summary>
         /// Add the In-Memory test harness to the container, and configure it using the callback specified.
         /// </summary>
-        [Obsolete(
-            "This method is deprecated, use AddMassTransitTestHarness instead. For more information, see https://masstransit.io/documentation/concepts/testing")]
+        [Obsolete("Use AddMassTransitTestHarness instead. Visit https://masstransit.io/obsolete for details.")]
         public static IServiceCollection AddMassTransitInMemoryTestHarness(this IServiceCollection services,
             Action<IBusRegistrationConfigurator>? configure = null)
         {
@@ -298,16 +309,16 @@ namespace MassTransit
             services.TryAddSingleton<RegistrationSagaStateMachineTestHarness<TStateMachine, T>>();
             services.TryAddSingleton<ISagaStateMachineTestHarness<TStateMachine, T>>(provider =>
                 provider.GetRequiredService<RegistrationSagaStateMachineTestHarness<TStateMachine, T>>());
-        #pragma warning disable CS0618
+            #pragma warning disable CS0618
             services.TryAddSingleton<IStateMachineSagaTestHarness<T, TStateMachine>>(provider =>
-            #pragma warning restore CS0618
+                #pragma warning restore CS0618
                 provider.GetRequiredService<RegistrationSagaStateMachineTestHarness<TStateMachine, T>>());
         }
 
         /// <summary>
         /// Add a consumer test harness for the specified consumer to the container
         /// </summary>
-        [Obsolete("Consider migrating to AddMassTransitTestHarness, which does not require this extra configuration")]
+        [Obsolete("Use AddMassTransitTestHarness instead. Visit https://masstransit.io/obsolete for details.")]
         public static void AddConsumerTestHarness<T>(this IBusRegistrationConfigurator configurator)
             where T : class, IConsumer
         {
@@ -320,7 +331,7 @@ namespace MassTransit
         /// Add a saga test harness for the specified saga to the container. The saga must be added separately, including
         /// a valid saga repository.
         /// </summary>
-        [Obsolete("Consider migrating to AddMassTransitTestHarness, which does not require this extra configuration")]
+        [Obsolete("Use AddMassTransitTestHarness instead. Visit https://masstransit.io/obsolete for details.")]
         public static void AddSagaTestHarness<T>(this IBusRegistrationConfigurator configurator)
             where T : class, ISaga
         {
@@ -333,7 +344,7 @@ namespace MassTransit
         /// Add a saga test harness for the specified saga to the container. The saga must be added separately, including
         /// a valid saga repository.
         /// </summary>
-        [Obsolete("Consider migrating to AddMassTransitTestHarness, which does not require this extra configuration")]
+        [Obsolete("Use AddMassTransitTestHarness instead. Visit https://masstransit.io/obsolete for details.")]
         public static void AddSagaStateMachineTestHarness<TStateMachine, TSaga>(this IBusRegistrationConfigurator configurator)
             where TSaga : class, SagaStateMachineInstance
             where TStateMachine : SagaStateMachine<TSaga>
@@ -345,9 +356,9 @@ namespace MassTransit
             configurator.AddSingleton<RegistrationSagaStateMachineTestHarness<TStateMachine, TSaga>>();
             configurator.AddSingleton<ISagaStateMachineTestHarness<TStateMachine, TSaga>>(provider =>
                 provider.GetRequiredService<RegistrationSagaStateMachineTestHarness<TStateMachine, TSaga>>());
-        #pragma warning disable CS0618
+            #pragma warning disable CS0618
             configurator.AddSingleton<IStateMachineSagaTestHarness<TSaga, TStateMachine>>(provider =>
-            #pragma warning restore CS0618
+                #pragma warning restore CS0618
                 provider.GetRequiredService<RegistrationSagaStateMachineTestHarness<TStateMachine, TSaga>>());
         }
 

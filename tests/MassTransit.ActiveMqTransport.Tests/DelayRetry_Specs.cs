@@ -10,10 +10,16 @@
     using Util;
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Using_the_delayed_exchange :
         ActiveMqTestFixture
     {
+        public Using_the_delayed_exchange(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_properly_defer_the_message_delivery()
         {
@@ -21,7 +27,7 @@
 
             ConsumeContext<PingMessage> context = await _received.Task;
 
-            Assert.GreaterOrEqual(_receivedTimeSpan, TimeSpan.FromSeconds(1));
+            Assert.That(_receivedTimeSpan, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(1)));
         }
 
         TaskCompletionSource<ConsumeContext<PingMessage>> _received;
@@ -62,10 +68,16 @@
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Delaying_a_message_retry_with_policy :
         ActiveMqTestFixture
     {
+        public Delaying_a_message_retry_with_policy(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_only_defer_up_to_the_retry_count()
         {
@@ -99,10 +111,16 @@
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Retrying_a_message_retry_with_policy :
         ActiveMqTestFixture
     {
+        public Retrying_a_message_retry_with_policy(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_only_retry_up_to_the_retry_count()
         {
@@ -131,15 +149,21 @@
                 Interlocked.Increment(ref _count);
 
                 throw new IntentionalTestException();
-            }, x => x.UseRetry(r => r.Intervals(100, 200)));
+            }, x => x.UseMessageRetry(r => r.Intervals(100, 200)));
         }
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Using_delayed_exchange_redelivery_with_a_consumer :
         ActiveMqTestFixture
     {
+        public Using_delayed_exchange_redelivery_with_a_consumer(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_retry_each_message_type()
         {
@@ -156,8 +180,11 @@
             ConsumeContext<Fault<OneMessage>> pingFaultContext = await pingFault;
             ConsumeContext<Fault<TwoMessage>> pongFaultContext = await pongFault;
 
-            Assert.That(_consumer.PingCount, Is.EqualTo(3));
-            Assert.That(_consumer.PongCount, Is.EqualTo(3));
+            Assert.Multiple(() =>
+            {
+                Assert.That(_consumer.PingCount, Is.EqualTo(3));
+                Assert.That(_consumer.PongCount, Is.EqualTo(3));
+            });
         }
 
         Consumer _consumer;
@@ -212,11 +239,10 @@
     [TestFixture]
     public class Delayed_redelivery
     {
-        Consumer _consumer;
-
         [Test]
         [Category("Flaky")]
-        [TestCase("activemq")]
+        [TestCase(ActiveMqHostAddress.ActiveMqScheme)]
+        [TestCase(ActiveMqHostAddress.AmqpScheme)]
         [TestCase("artemis")]
         public async Task Should_properly_redeliver(string flavor)
         {
@@ -228,15 +254,7 @@
             {
                 BusTestFixture.ConfigureBusDiagnostics(cfg);
 
-                if (flavor == "artemis")
-                {
-                    cfg.Host("localhost", 61618, cfgHost =>
-                    {
-                        cfgHost.Username("admin");
-                        cfgHost.Password("admin");
-                    });
-                    cfg.EnableArtemisCompatibility();
-                }
+                cfg.ConfigureHost(flavor);
 
                 cfg.ReceiveEndpoint("input-queue", x =>
                 {
@@ -275,11 +293,16 @@
             ConsumeContext<Fault<OneMessage>> pingFaultContext = await pingFault;
             ConsumeContext<Fault<TwoMessage>> pongFaultContext = await pongFault;
 
-            Assert.That(_consumer.PingCount, Is.EqualTo(3));
-            Assert.That(_consumer.PongCount, Is.EqualTo(3));
+            Assert.Multiple(() =>
+            {
+                Assert.That(_consumer.PingCount, Is.EqualTo(3));
+                Assert.That(_consumer.PongCount, Is.EqualTo(3));
+            });
 
             await busControl.StopAsync();
         }
+
+        Consumer _consumer;
 
         public Task<ConsumeContext<T>> SubscribeHandler<T>(IBus bus, Func<ConsumeContext<T>, bool> filter)
             where T : class
@@ -337,10 +360,16 @@
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Using_delayed_exchange_redelivery_with_a_consumer_and_retry :
         ActiveMqTestFixture
     {
+        public Using_delayed_exchange_redelivery_with_a_consumer_and_retry(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_retry_and_redeliver()
         {
@@ -390,10 +419,16 @@
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Delaying_a_message_retry_with_policy_but_no_retries :
         ActiveMqTestFixture
     {
+        public Delaying_a_message_retry_with_policy_but_no_retries(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_immediately_fault_with_no_delay()
         {
@@ -427,10 +462,16 @@
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class Explicitly_deferring_a_message_instead_of_throwing :
         ActiveMqTestFixture
     {
+        public Explicitly_deferring_a_message_instead_of_throwing(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_properly_defer_the_message_delivery()
         {
@@ -438,7 +479,7 @@
 
             ConsumeContext<PingMessage> context = await _received.Task;
 
-            Assert.GreaterOrEqual(_receivedTimeSpan, TimeSpan.FromSeconds(1));
+            Assert.That(_receivedTimeSpan, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(1)));
         }
 
         TaskCompletionSource<ConsumeContext<PingMessage>> _received;
@@ -479,10 +520,16 @@
     }
 
 
-    [TestFixture]
+    [TestFixture(ActiveMqHostAddress.ActiveMqScheme)]
+    [TestFixture(ActiveMqHostAddress.AmqpScheme)]
     public class execute_callback_function_during_defer :
         ActiveMqTestFixture
     {
+        public execute_callback_function_during_defer(string protocol)
+            : base(protocol)
+        {
+        }
+
         [Test]
         public async Task Should_execute_callback_during_defer_the_message_delivery()
         {
@@ -490,8 +537,11 @@
 
             ConsumeContext<PingMessage> context = await _received.Task;
 
-            Assert.GreaterOrEqual(_receivedTimeSpan, TimeSpan.FromSeconds(1));
-            Assert.IsTrue(_hit);
+            Assert.Multiple(() =>
+            {
+                Assert.That(_receivedTimeSpan, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(1)));
+                Assert.That(_hit, Is.True);
+            });
         }
 
         TaskCompletionSource<ConsumeContext<PingMessage>> _received;

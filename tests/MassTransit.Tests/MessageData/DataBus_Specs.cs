@@ -19,19 +19,21 @@
             InMemoryTestFixture
         {
             [Test]
-            public async Task Should_not_inline_stream()
+            public async Task Should_be_able_to_write_bytes_too()
             {
                 var data = new byte[256];
-                using MemoryStream ms = new MemoryStream(data);
 
-                await InputQueueSendEndpoint.Send<MessageWithStream>(new { Stream = ms});
+                var message = new MessageWithByteArrayImpl { Bytes = await _repository.PutBytes(data) };
 
-                var recievedStreamcontext = await _receivedStream;
-                Assert.That(recievedStreamcontext.Message.Stream.Address, Is.Not.Null);
+                await InputQueueSendEndpoint.Send(message);
 
-                using MemoryStream receivedMemoryStream = new MemoryStream();
-                await _receivedStreamData.CopyToAsync(receivedMemoryStream);
-                Assert.That(receivedMemoryStream.ToArray(), Is.EqualTo(data));
+                ConsumeContext<MessageWithByteArray> receivedBytesContext = await _receivedBytes;
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(receivedBytesContext.Message.Bytes.Address, Is.Null);
+                    Assert.That(_receivedBytesArray, Is.EqualTo(data));
+                });
             }
 
             [Test]
@@ -44,29 +46,35 @@
                 await InputQueueSendEndpoint.Send(message);
 
                 var recievedContext = await _received;
-                Assert.That(recievedContext.Message.Body.Address, Is.Null);
-                Assert.That(_receivedBody, Is.EqualTo(data));
+                Assert.Multiple(() =>
+                {
+                    Assert.That(recievedContext.Message.Body.Address, Is.Null);
+                    Assert.That(_receivedBody, Is.EqualTo(data));
+                });
             }
 
             [Test]
-            public async Task Should_be_able_to_write_bytes_too()
+            public async Task Should_not_inline_stream()
             {
                 var data = new byte[256];
+                using var ms = new MemoryStream(data);
 
-                var message = new MessageWithByteArrayImpl { Bytes = await _repository.PutBytes(data) };
+                await InputQueueSendEndpoint.Send<MessageWithStream>(new { Stream = ms });
 
-                await InputQueueSendEndpoint.Send(message);
+                ConsumeContext<MessageWithStream> streamContext = await _receivedStream;
+                Assert.That(streamContext.Message.Stream.Address, Is.Not.Null);
 
-                var receivedBytesContext = await _receivedBytes;
-
-                Assert.That(receivedBytesContext.Message.Bytes.Address, Is.Null);
-                Assert.That(_receivedBytesArray, Is.EqualTo(data));
+                using var receivedMemoryStream = new MemoryStream();
+                await _receivedStreamData.CopyToAsync(receivedMemoryStream);
+                Assert.That(receivedMemoryStream.ToArray(), Is.EqualTo(data));
             }
 
             IMessageDataRepository _repository;
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<MessageWithBigData>> _received;
             Task<ConsumeContext<MessageWithByteArray>> _receivedBytes;
             Task<ConsumeContext<MessageWithStream>> _receivedStream;
+            #pragma warning restore NUnit1032
             string _receivedBody;
             byte[] _receivedBytesArray;
             Stream _receivedStreamData;
@@ -110,6 +118,20 @@
             InMemoryTestFixture
         {
             [Test]
+            public async Task Should_be_able_to_write_bytes_too()
+            {
+                var data = new byte[10000];
+
+                var message = new MessageWithByteArrayImpl { Bytes = await _repository.PutBytes(data) };
+
+                await InputQueueSendEndpoint.Send(message);
+
+                await _receivedBytes;
+
+                Assert.That(_receivedBytesArray, Is.EqualTo(data));
+            }
+
+            [Test]
             public async Task Should_be_able_to_write_stream_too()
             {
                 var data = new byte[10000];
@@ -127,20 +149,6 @@
             }
 
             [Test]
-            public async Task Should_be_able_to_write_bytes_too()
-            {
-                var data = new byte[10000];
-
-                var message = new MessageWithByteArrayImpl { Bytes = await _repository.PutBytes(data) };
-
-                await InputQueueSendEndpoint.Send(message);
-
-                await _receivedBytes;
-
-                Assert.That(_receivedBytesArray,Is.EqualTo(data));
-            }
-
-            [Test]
             public async Task Should_load_the_data_from_the_repository()
             {
                 var data = new string('*', 10000);
@@ -155,9 +163,11 @@
             }
 
             IMessageDataRepository _repository;
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<MessageWithBigData>> _received;
             Task<ConsumeContext<MessageWithByteArray>> _receivedBytes;
             Task<ConsumeContext<MessageWithStream>> _receivedStream;
+            #pragma warning restore NUnit1032
             string _receivedBody;
             byte[] _receivedBytesArray;
             Stream _receivedStreamData;
@@ -200,6 +210,20 @@
             InMemoryTestFixture
         {
             [Test]
+            public async Task Should_be_able_to_write_bytes_too()
+            {
+                var data = new byte[10000];
+
+                var message = new MessageWithByteArrayImpl { Bytes = await _repository.PutBytes(data) };
+
+                await InputQueueSendEndpoint.Send(message);
+
+                await _receivedBytes;
+
+                Assert.That(_receivedBytesArray, Is.EqualTo(data));
+            }
+
+            [Test]
             public async Task Should_be_able_to_write_stream_too()
             {
                 var data = new byte[10000];
@@ -217,20 +241,6 @@
             }
 
             [Test]
-            public async Task Should_be_able_to_write_bytes_too()
-            {
-                var data = new byte[10000];
-
-                var message = new MessageWithByteArrayImpl { Bytes = await _repository.PutBytes(data) };
-
-                await InputQueueSendEndpoint.Send(message);
-
-                await _receivedBytes;
-
-                Assert.That(_receivedBytesArray, Is.EqualTo(data));
-            }
-
-            [Test]
             public async Task Should_load_the_data_from_the_repository()
             {
                 var data = new string('*', 10000);
@@ -245,9 +255,11 @@
             }
 
             IMessageDataRepository _repository;
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<MessageWithBigData>> _received;
             Task<ConsumeContext<MessageWithByteArray>> _receivedBytes;
             Task<ConsumeContext<MessageWithStream>> _receivedStream;
+            #pragma warning restore NUnit1032
             string _receivedBody;
             byte[] _receivedBytesArray;
             Stream _receivedStreamData;
@@ -313,7 +325,9 @@
             }
 
             IMessageDataRepository _messageDataRepository;
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<MessageWithBigData>> _received;
+            #pragma warning restore NUnit1032
             string _receivedBody;
 
             protected override void ConfigureInMemoryBus(IInMemoryBusFactoryConfigurator configurator)
@@ -380,8 +394,11 @@
 
                 await _received;
 
-                Assert.That(_body, Is.Not.Null);
-                Assert.That(_body0, Is.Not.Null);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(_body, Is.Not.Null);
+                    Assert.That(_body0, Is.Not.Null);
+                });
 
                 byte[] result = await _body.Value;
                 Assert.That(result, Is.EqualTo(buffer));
@@ -401,7 +418,9 @@
 
             IMessageDataRepository _messageDataRepository;
 
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<IMessage>> _received;
+            #pragma warning restore NUnit1032
             MessageData<byte[]> _body;
             MessageData<byte[]> _body0;
             MessageData<byte[]> _bodyList0;
@@ -456,7 +475,9 @@
 
             IMessageDataRepository _messageDataRepository;
 
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<MessageWithByteArray>> _received;
+            #pragma warning restore NUnit1032
             byte[] _receivedBytesArray;
 
             protected override void ConfigureInMemoryBus(IInMemoryBusFactoryConfigurator configurator)
@@ -509,7 +530,9 @@
 
             IMessageDataRepository _messageDataRepository;
 
+            #pragma warning disable NUnit1032
             Task<ConsumeContext<MessageWithStream>> _received;
+            #pragma warning restore NUnit1032
             Stream _receivedStream;
 
             protected override void ConfigureInMemoryBus(IInMemoryBusFactoryConfigurator configurator)

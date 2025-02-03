@@ -14,7 +14,7 @@ namespace MassTransit.Configuration
     {
         Action<IMediatorRegistrationContext, IMediatorConfigurator> _configure;
 
-        public ServiceCollectionMediatorConfigurator(IServiceCollection collection)
+        public ServiceCollectionMediatorConfigurator(IServiceCollection collection, Uri baseAddress)
             : base(collection, new DependencyInjectionMediatorContainerRegistrar(collection))
         {
             IMediatorRegistrationContext CreateRegistrationContext(IServiceProvider provider)
@@ -24,7 +24,7 @@ namespace MassTransit.Configuration
                 return new MediatorRegistrationContext(registration);
             }
 
-            collection.AddSingleton(MediatorFactory);
+            collection.AddSingleton(e => MediatorFactory(e, baseAddress));
             collection.AddSingleton(CreateRegistrationContext);
 
             AddMassTransitComponents(collection);
@@ -37,15 +37,6 @@ namespace MassTransit.Configuration
 
             ThrowIfAlreadyConfigured(nameof(ConfigureMediator));
             _configure = configure;
-        }
-
-        public override void AddConfigureEndpointsCallback(ConfigureEndpointsProviderCallback callback)
-        {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
-
-            this.TryAddSingleton<IConfigureReceiveEndpoint>(provider =>
-                new ConfigureReceiveEndpointDelegateProvider(provider.GetRequiredService<IMediatorRegistrationContext>(), callback));
         }
 
         static void AddMassTransitComponents(IServiceCollection collection)
@@ -70,13 +61,13 @@ namespace MassTransit.Configuration
             collection.TryAddScoped(typeof(IRequestClient<>), typeof(GenericRequestClient<>));
         }
 
-        IMediator MediatorFactory(IServiceProvider provider)
+        IMediator MediatorFactory(IServiceProvider provider, Uri baseAddress)
         {
             ConfigureLogContext(provider);
 
             var context = provider.GetRequiredService<IMediatorRegistrationContext>();
 
-            return Bus.Factory.CreateMediator(cfg =>
+            return Bus.Factory.CreateMediator(baseAddress, cfg =>
             {
                 _configure?.Invoke(context, cfg);
 

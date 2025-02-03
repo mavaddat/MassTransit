@@ -47,21 +47,13 @@ namespace MassTransit.Configuration
 
             this.TryAddScoped(CreateScopeProvider);
 
-            this.AddSingleton(_ => Bind<IBus, TRider>.Create((ISetScopedConsumeContext)new SetScopedConsumeContext(provider =>
+            this.AddSingleton(_ => Bind<IBus, TRider>.Create((ISetScopedConsumeContext)new SetScopedConsumeContext<IBus>(provider =>
                 provider.GetRequiredService<Bind<IBus, TRider, IScopedConsumeContextProvider>>().Value)));
             this.AddSingleton(provider => Bind<IBus, TRider>.Create(CreateRegistrationContext(provider)));
             this.AddSingleton(provider =>
                 Bind<IBus>.Create(riderFactory.CreateRider(provider.GetRequiredService<Bind<IBus, TRider, IRiderRegistrationContext>>().Value)));
             this.AddSingleton(provider => Bind<IBus>.Create(provider.GetRequiredService<Bind<IBus, IBusInstance>>().Value.GetRider<TRider>()));
             this.AddSingleton(provider => provider.GetRequiredService<Bind<IBus, TRider>>().Value);
-        }
-
-        public override void AddConfigureEndpointsCallback(ConfigureEndpointsProviderCallback callback)
-        {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
-
-            throw new NotSupportedException("Rider does not support endpoint callback");
         }
 
         protected void ThrowIfAlreadyConfigured(Type serviceType)
@@ -110,20 +102,12 @@ namespace MassTransit.Configuration
 
             this.TryAddScoped(CreateScopeProvider);
 
-            this.AddSingleton(_ => Bind<TBus, TRider>.Create((ISetScopedConsumeContext)new SetScopedConsumeContext(provider =>
+            this.AddSingleton(_ => Bind<TBus, TRider>.Create((ISetScopedConsumeContext)new SetScopedConsumeContext<TBus>(provider =>
                 provider.GetRequiredService<Bind<TBus, TRider, IScopedConsumeContextProvider>>().Value)));
             this.AddSingleton(provider => Bind<TBus, TRider>.Create(CreateRegistrationContext(provider)));
             this.AddSingleton(provider =>
                 Bind<TBus>.Create(riderFactory.CreateRider(provider.GetRequiredService<Bind<TBus, TRider, IRiderRegistrationContext>>().Value)));
             this.AddSingleton(provider => Bind<TBus>.Create(provider.GetRequiredService<IBusInstance<TBus>>().GetRider<TRider>()));
-        }
-
-        public override void AddConfigureEndpointsCallback(ConfigureEndpointsProviderCallback callback)
-        {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
-
-            throw new NotSupportedException("Rider does not support endpoint callback");
         }
     }
 }

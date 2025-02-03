@@ -5,6 +5,7 @@ namespace MassTransit
     using System.Reflection;
     using System.Runtime.Serialization;
     using System.Text;
+    using Metadata;
 
 
     [Serializable]
@@ -20,6 +21,9 @@ namespace MassTransit
         {
         }
 
+    #if NET8_0_OR_GREATER
+        [Obsolete("Formatter-based serialization is obsolete and should not be used.")]
+    #endif
         protected MessageUrn(SerializationInfo serializationInfo, StreamingContext streamingContext)
             : base(serializationInfo, streamingContext)
         {
@@ -50,9 +54,20 @@ namespace MassTransit
 
         static Cached ValueFactory(Type type)
         {
-            return Activator.CreateInstance(typeof(Cached<>).MakeGenericType(type)) as Cached
-                ?? throw new InvalidOperationException($"MessageUrn creation failed for type: {TypeCache.GetShortName(type)} ");
+            return Activation.Activate(type, new Factory());
         }
+
+
+        readonly struct Factory :
+            IActivationType<Cached>
+        {
+            public Cached ActivateType<T>()
+                where T : class
+            {
+                return new Cached<T>();
+            }
+        }
+
 
         public void Deconstruct(out string? name, out string? ns, out string? assemblyName)
         {
@@ -96,35 +111,42 @@ namespace MassTransit
                 : messageName!;
         }
 
-        static string? GetMessageNameFromAttribute(Type type)
+        static string? GetMessageNameFromAttribute(Type? type)
         {
-            return type.GetCustomAttribute<MessageUrnAttribute>()?.Urn.ToString();
+            if (type is { IsArray: true, HasElementType: true })
+            {
+                var elementType = type.GetElementType();
+                var elementName = GetMessageNameFromAttribute(elementType);
+
+                if (!string.IsNullOrWhiteSpace(elementName))
+                    return elementName + "[]";
+            }
+
+            return type?.GetCustomAttribute<MessageUrnAttribute>()?.Urn.ToString();
         }
 
         static string GetMessageNameFromType(StringBuilder sb, Type type, bool includeScope)
         {
-            var typeInfo = type.GetTypeInfo();
-
-            if (typeInfo.IsGenericParameter)
+            if (type.IsGenericParameter)
                 return string.Empty;
 
-            if (includeScope && typeInfo.Namespace != null)
+            var ns = type.Namespace;
+            if (includeScope && ns != null)
             {
-                var ns = typeInfo.Namespace;
                 sb.Append(ns);
 
                 sb.Append(':');
             }
 
-            if (typeInfo.IsNested && typeInfo.DeclaringType != null)
+            if (type is { IsNested: true, DeclaringType: { } })
             {
-                GetMessageNameFromType(sb, typeInfo.DeclaringType, false);
+                GetMessageNameFromType(sb, type.DeclaringType, false);
                 sb.Append('+');
             }
 
-            if (typeInfo.IsGenericType)
+            if (type.IsGenericType)
             {
-                var name = typeInfo.GetGenericTypeDefinition().Name;
+                var name = type.GetGenericTypeDefinition().Name;
 
                 //remove `1
                 var index = name.IndexOf('`');
@@ -135,7 +157,7 @@ namespace MassTransit
                 sb.Append(name);
                 sb.Append('[');
 
-                Type[] arguments = typeInfo.GetGenericArguments();
+                Type[] arguments = type.GetGenericArguments();
                 for (var i = 0; i < arguments.Length; i++)
                 {
                     if (i > 0)
@@ -149,7 +171,7 @@ namespace MassTransit
                 sb.Append(']');
             }
             else
-                sb.Append(typeInfo.Name);
+                sb.Append(type.Name);
 
             return sb.ToString();
         }

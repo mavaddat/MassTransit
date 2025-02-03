@@ -35,9 +35,12 @@ namespace MassTransit.Azure.ServiceBus.Core.Tests
 
             IConsumerTestHarness<FaultyFunctionConsumer> consumerHarness = harness.GetConsumerHarness<FaultyFunctionConsumer>();
 
-            Assert.That(await consumerHarness.Consumed.Any<FunctionMessage>(), Is.True);
+            await Assert.MultipleAsync(async () =>
+            {
+                Assert.That(await consumerHarness.Consumed.Any<FunctionMessage>(), Is.True);
 
-            Assert.That(await harness.Published.Any<Fault<FunctionMessage>>(), Is.True);
+                Assert.That(await harness.Published.Any<Fault<FunctionMessage>>(), Is.True);
+            });
         }
     }
 
@@ -66,7 +69,8 @@ namespace MassTransit.Azure.ServiceBus.Core.Tests
             ConsumerDefinition<FaultyFunctionConsumer>
         {
             protected override void ConfigureConsumer(IReceiveEndpointConfigurator endpointConfigurator,
-                IConsumerConfigurator<FaultyFunctionConsumer> consumerConfigurator)
+                IConsumerConfigurator<FaultyFunctionConsumer> consumerConfigurator,
+                IRegistrationContext context)
             {
                 endpointConfigurator.UseMessageRetry(r => r.Interval(3, TimeSpan.FromMilliseconds(1)));
             }

@@ -78,12 +78,12 @@ namespace MassTransit.InMemoryTransport
 
 
         class ReceiveTransportAgent :
-            ConsumerAgent<Guid>,
+            ConsumerAgent<long>,
             ReceiveTransportHandle,
             IMessageReceiver<InMemoryTransportMessage>
         {
             readonly InMemoryReceiveEndpointContext _context;
-            readonly ChannelExecutor _executor;
+            readonly TaskExecutor _executor;
             readonly IMessageQueue<InMemoryTransportContext, InMemoryTransportMessage> _queue;
             TopologyHandle _topologyHandle;
 
@@ -93,7 +93,7 @@ namespace MassTransit.InMemoryTransport
                 _context = context;
                 _queue = queue;
 
-                _executor = new ChannelExecutor(context.ConcurrentMessageLimit ?? context.PrefetchCount, false);
+                _executor = new TaskExecutor(context.ConcurrentMessageLimit ?? context.PrefetchCount);
 
                 Task.Run(() => Startup());
             }
@@ -111,7 +111,7 @@ namespace MassTransit.InMemoryTransport
 
                     try
                     {
-                        await Dispatch(message.MessageId, context, NoLockReceiveContext.Instance).ConfigureAwait(false);
+                        await Dispatch(message.SequenceNumber, context, NoLockReceiveContext.Instance).ConfigureAwait(false);
                     }
                     catch (Exception exception)
                     {

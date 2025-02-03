@@ -14,29 +14,26 @@ namespace MassTransit.KafkaIntegration.Configuration
         IKafkaProducerConfigurator<TKey, TValue>
         where TValue : class
     {
+        readonly List<Action<ISendPipeConfigurator>> _configureSend;
         readonly IKafkaHostConfiguration _hostConfiguration;
         readonly Action<IClient, string> _oAuthBearerTokenRefreshHandler;
         readonly ProducerConfig _producerConfig;
         readonly SendObservable _sendObservers;
         readonly SerializationConfiguration _serialization;
-        Action<ISendPipeConfigurator> _configureSend;
         IHeadersSerializer _headersSerializer;
         IAsyncSerializer<TKey> _keySerializer;
         Action<string> _statisticsHandler;
         IAsyncSerializer<TValue> _valueSerializer;
 
         public KafkaProducerSpecification(IKafkaHostConfiguration hostConfiguration, ProducerConfig producerConfig, string topicName,
-            Action<IClient, string> oAuthBearerTokenRefreshHandler)
+            Action<IClient, string> oAuthBearerTokenRefreshHandler, List<Action<ISendPipeConfigurator>> configureSend)
         {
             _hostConfiguration = hostConfiguration;
             _producerConfig = producerConfig;
             TopicName = topicName;
             _oAuthBearerTokenRefreshHandler = oAuthBearerTokenRefreshHandler;
+            _configureSend = configureSend;
             _sendObservers = new SendObservable();
-
-            SetKeySerializer(SerializerTypes.TryGet<TKey>() ?? new MassTransitAsyncJsonSerializer<TKey>());
-            SetValueSerializer(new MassTransitAsyncJsonSerializer<TValue>());
-
             _serialization = new SerializationConfiguration();
         }
 
@@ -189,16 +186,20 @@ namespace MassTransit.KafkaIntegration.Configuration
         {
             if (string.IsNullOrEmpty(TopicName))
                 yield return this.Failure("Topic", "should not be empty");
+
+            if (_headersSerializer == null)
+                yield return this.Failure("HeadersSerializer", "should not be null");
+
+            if (_keySerializer == null)
+                yield return this.Failure("KeySerializer", "should not be null");
+
+            if (_valueSerializer == null)
+                yield return this.Failure("ValueSerializer", "should not be null");
         }
 
         public ConnectHandle ConnectSendObserver(ISendObserver observer)
         {
             return _sendObservers.Connect(observer);
-        }
-
-        public void ConfigureSend(Action<ISendPipeConfigurator> callback)
-        {
-            _configureSend = callback ?? throw new ArgumentNullException(nameof(callback));
         }
     }
 }

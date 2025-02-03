@@ -30,19 +30,6 @@ namespace MassTransit.KafkaIntegration
             Reset();
         }
 
-        public ITopicProducer<TKey, TValue> GetProducer<TKey, TValue>(Uri address, ConsumeContext consumeContext)
-            where TValue : class
-        {
-            if (address == null)
-                throw new ArgumentNullException(nameof(address));
-
-            var provider = consumeContext == null
-                ? _producerProvider.Value
-                : new ConsumeContextTopicProducerProvider(_producerProvider.Value, consumeContext);
-
-            return provider.GetProducer<TKey, TValue>(address);
-        }
-
         public HostReceiveEndpointHandle ConnectTopicEndpoint<TKey, TValue>(string topicName, string groupId,
             Action<IRiderRegistrationContext, IKafkaTopicReceiveEndpointConfigurator<TKey, TValue>> configure)
             where TValue : class
@@ -87,6 +74,17 @@ namespace MassTransit.KafkaIntegration
             return _endpoints.CheckEndpointHealth();
         }
 
+        public ConnectHandle ConnectSendObserver(ISendObserver observer)
+        {
+            return _producerProvider.Value.ConnectSendObserver(observer);
+        }
+
+        public ITopicProducer<TKey, TValue> GetProducer<TKey, TValue>(Uri address)
+            where TValue : class
+        {
+            return _producerProvider.Value.GetProducer<TKey, TValue>(address);
+        }
+
         void Reset()
         {
             _producerProvider = new Lazy<ITopicProducerProvider>(() => new TopicProducerProvider(_busInstance, _hostConfiguration));
@@ -112,7 +110,7 @@ namespace MassTransit.KafkaIntegration
 
             protected override async Task StopAgent(StopContext context)
             {
-                await _endpoints.Stop(context.CancellationToken).ConfigureAwait(false);
+                await _endpoints.StopEndpoints(context.CancellationToken).ConfigureAwait(false);
                 await _supervisor.Stop(context).ConfigureAwait(false);
                 await base.StopAgent(context).ConfigureAwait(false);
                 _onStop();

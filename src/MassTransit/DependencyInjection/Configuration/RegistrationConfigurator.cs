@@ -7,7 +7,6 @@ namespace MassTransit.Configuration
     using DependencyInjection.Registration;
     using Internals;
     using Microsoft.Extensions.DependencyInjection;
-    using Microsoft.Extensions.DependencyInjection.Extensions;
     using Saga;
 
 
@@ -32,13 +31,16 @@ namespace MassTransit.Configuration
 
         public IContainerRegistrar Registrar { get; }
 
-        public IConsumerRegistrationConfigurator<T> AddConsumer<T>(Action<IConsumerConfigurator<T>> configure)
+        protected RequestTimeout DefaultRequestTimeout { get; private set; } = RequestTimeout.Default;
+
+        public IConsumerRegistrationConfigurator<T> AddConsumer<T>(Action<IRegistrationContext, IConsumerConfigurator<T>> configure = null)
             where T : class, IConsumer
         {
             return AddConsumer(null, configure);
         }
 
-        public IConsumerRegistrationConfigurator<T> AddConsumer<T>(Type consumerDefinitionType, Action<IConsumerConfigurator<T>> configure = null)
+        public IConsumerRegistrationConfigurator<T> AddConsumer<T>(Type consumerDefinitionType,
+            Action<IRegistrationContext, IConsumerConfigurator<T>> configure = null)
             where T : class, IConsumer
         {
             var registration = _collection.RegisterConsumer<T>(Registrar, consumerDefinitionType);
@@ -48,13 +50,13 @@ namespace MassTransit.Configuration
             return new ConsumerRegistrationConfigurator<T>(this, registration);
         }
 
-        public ISagaRegistrationConfigurator<T> AddSaga<T>(Action<ISagaConfigurator<T>> configure)
+        public ISagaRegistrationConfigurator<T> AddSaga<T>(Action<IRegistrationContext, ISagaConfigurator<T>> configure)
             where T : class, ISaga
         {
             return AddSaga(null, configure);
         }
 
-        public ISagaRegistrationConfigurator<T> AddSaga<T>(Type sagaDefinitionType, Action<ISagaConfigurator<T>> configure = null)
+        public ISagaRegistrationConfigurator<T> AddSaga<T>(Type sagaDefinitionType, Action<IRegistrationContext, ISagaConfigurator<T>> configure = null)
             where T : class, ISaga
         {
             if (typeof(T).HasInterface<SagaStateMachineInstance>())
@@ -67,14 +69,15 @@ namespace MassTransit.Configuration
             return new SagaRegistrationConfigurator<T>(this, registration);
         }
 
-        public ISagaRegistrationConfigurator<T> AddSagaStateMachine<TStateMachine, T>(Action<ISagaConfigurator<T>> configure = null)
+        public ISagaRegistrationConfigurator<T> AddSagaStateMachine<TStateMachine, T>(Action<IRegistrationContext, ISagaConfigurator<T>> configure = null)
             where TStateMachine : class, SagaStateMachine<T>
             where T : class, SagaStateMachineInstance
         {
             return AddSagaStateMachine<TStateMachine, T>(null, configure);
         }
 
-        public ISagaRegistrationConfigurator<T> AddSagaStateMachine<TStateMachine, T>(Type sagaDefinitionType, Action<ISagaConfigurator<T>> configure = null)
+        public ISagaRegistrationConfigurator<T> AddSagaStateMachine<TStateMachine, T>(Type sagaDefinitionType,
+            Action<IRegistrationContext, ISagaConfigurator<T>> configure = null)
             where TStateMachine : class, SagaStateMachine<T>
             where T : class, SagaStateMachineInstance
         {
@@ -86,7 +89,7 @@ namespace MassTransit.Configuration
         }
 
         public IExecuteActivityRegistrationConfigurator<TActivity, TArguments> AddExecuteActivity<TActivity, TArguments>(
-            Action<IExecuteActivityConfigurator<TActivity, TArguments>> configure)
+            Action<IRegistrationContext, IExecuteActivityConfigurator<TActivity, TArguments>> configure)
             where TActivity : class, IExecuteActivity<TArguments>
             where TArguments : class
         {
@@ -94,7 +97,7 @@ namespace MassTransit.Configuration
         }
 
         public IExecuteActivityRegistrationConfigurator<TActivity, TArguments> AddExecuteActivity<TActivity, TArguments>(Type executeActivityDefinitionType,
-            Action<IExecuteActivityConfigurator<TActivity, TArguments>> configure = null)
+            Action<IRegistrationContext, IExecuteActivityConfigurator<TActivity, TArguments>> configure = null)
             where TActivity : class, IExecuteActivity<TArguments>
             where TArguments : class
         {
@@ -106,8 +109,8 @@ namespace MassTransit.Configuration
         }
 
         public IActivityRegistrationConfigurator<TActivity, TArguments, TLog> AddActivity<TActivity, TArguments, TLog>(
-            Action<IExecuteActivityConfigurator<TActivity, TArguments>> configureExecute,
-            Action<ICompensateActivityConfigurator<TActivity, TLog>> configureCompensate)
+            Action<IRegistrationContext, IExecuteActivityConfigurator<TActivity, TArguments>> configureExecute,
+            Action<IRegistrationContext, ICompensateActivityConfigurator<TActivity, TLog>> configureCompensate)
             where TActivity : class, IActivity<TArguments, TLog>
             where TArguments : class
             where TLog : class
@@ -116,8 +119,8 @@ namespace MassTransit.Configuration
         }
 
         public IActivityRegistrationConfigurator<TActivity, TArguments, TLog> AddActivity<TActivity, TArguments, TLog>(Type activityDefinitionType,
-            Action<IExecuteActivityConfigurator<TActivity, TArguments>> configureExecute = null,
-            Action<ICompensateActivityConfigurator<TActivity, TLog>> configureCompensate = null)
+            Action<IRegistrationContext, IExecuteActivityConfigurator<TActivity, TArguments>> configureExecute = null,
+            Action<IRegistrationContext, ICompensateActivityConfigurator<TActivity, TLog>> configureCompensate = null)
             where TActivity : class, IActivity<TArguments, TLog>
             where TArguments : class
             where TLog : class
@@ -138,16 +141,6 @@ namespace MassTransit.Configuration
             return new FutureRegistrationConfigurator<TFuture>(this, registration);
         }
 
-        public void AddConfigureEndpointsCallback(ConfigureEndpointsCallback callback)
-        {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
-
-            _collection.TryAddSingleton<IConfigureReceiveEndpoint>(provider => new ConfigureReceiveEndpointDelegate(callback));
-        }
-
-        public abstract void AddConfigureEndpointsCallback(ConfigureEndpointsProviderCallback callback);
-
         public void AddEndpoint(Type definitionType)
         {
             _collection.RegisterEndpoint(Registrar, definitionType);
@@ -163,7 +156,7 @@ namespace MassTransit.Configuration
         public void AddRequestClient<T>(RequestTimeout timeout)
             where T : class
         {
-            Registrar.RegisterRequestClient<T>(timeout);
+            Registrar.RegisterRequestClient<T>(GetRequestTimeout(timeout));
         }
 
         public void AddRequestClient<T>(Uri destinationAddress, RequestTimeout timeout)
@@ -174,17 +167,31 @@ namespace MassTransit.Configuration
 
         public void AddRequestClient(Type requestType, RequestTimeout timeout = default)
         {
-            RequestClientRegistrationCache.Register(requestType, timeout, Registrar);
+            RequestClientRegistrationCache.Register(requestType, GetRequestTimeout(timeout), Registrar);
         }
 
         public void AddRequestClient(Type requestType, Uri destinationAddress, RequestTimeout timeout = default)
         {
-            RequestClientRegistrationCache.Register(requestType, destinationAddress, timeout, Registrar);
+            RequestClientRegistrationCache.Register(requestType, destinationAddress, GetRequestTimeout(timeout), Registrar);
+        }
+
+        public void SetDefaultRequestTimeout(RequestTimeout timeout)
+        {
+            DefaultRequestTimeout = timeout;
+        }
+
+        public void SetDefaultRequestTimeout(int? d = null, int? h = null, int? m = null, int? s = null, int? ms = null)
+        {
+            var timeout = new TimeSpan(d ?? 0, h ?? 0, m ?? 0, s ?? 0, ms ?? 0);
+            if (timeout <= TimeSpan.Zero)
+                throw new ArgumentException("The timeout must be > 0");
+
+            DefaultRequestTimeout = timeout;
         }
 
         public void SetEndpointNameFormatter(IEndpointNameFormatter endpointNameFormatter)
         {
-            _collection.TryAddSingleton(endpointNameFormatter);
+            Registrar.RegisterEndpointNameFormatter(endpointNameFormatter);
         }
 
         public ISagaRegistrationConfigurator<T> AddSagaRepository<T>()
@@ -256,6 +263,11 @@ namespace MassTransit.Configuration
         {
             get => _collection[index];
             set => _collection[index] = value;
+        }
+
+        RequestTimeout GetRequestTimeout(RequestTimeout timeout)
+        {
+            return timeout == RequestTimeout.Default ? DefaultRequestTimeout : timeout;
         }
 
         public void Complete()
